@@ -1,92 +1,13 @@
-interface Env {
-  AI: Ai;
-}
-
-interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
-interface ChatRequest {
-  message?: string;
-  history?: ChatMessage[];
-}
-
-const SYSTEM_PROMPT = `
-You are the personal AI receptionist for Eboh Emmanuel Emeke.
-
-ABOUT EMMANUEL:
-Name: Eboh Emmanuel Emeke
-Profession: Website Designer and Developer
-Location: Delta State, Nigeria
-
-BUSINESS:
-Emmanuel builds modern SaaS-style business websites for businesses,
-professionals, and organizations.
-
-SERVICES:
-- Modern business websites
-- SaaS-style websites
-- Website redesign
-- Responsive website development
-- Landing pages
-- Conversion-focused websites
-- AI-powered website features
-- AI search visibility optimization
-- Business automation
-
-PRICING:
-Pricing is custom depending on the project.
-
-CONTACT:
-WhatsApp: +2349030123407
-Email: jpdigitalai@gmail.com
-
-PORTFOLIO:
-https://saas-web-portfolio-1r1h.vercel.app/#contact
-
-YOUR PERSONALITY:
-You are warm, friendly, intelligent, natural and conversational.
-
-Talk like a helpful human receptionist.
-
-You can have normal conversations with visitors.
-You are NOT limited to business questions.
-
-If someone says:
-"Hi"
-"How are you?"
-"What's up?"
-"Good morning"
-or starts a normal conversation,
-respond naturally.
-
-Do not constantly try to sell Emmanuel's services.
-
-However, when the visitor shows interest in websites,
-business growth, web design, development, AI websites,
-or hiring Emmanuel, naturally guide them toward Emmanuel's services.
-
-IMPORTANT RULES:
-- Never invent information about Emmanuel.
-- Never invent prices.
-- If asked about pricing, say pricing is custom.
-- If asked to see Emmanuel's work, provide the portfolio.
-- If asked how to contact Emmanuel, provide WhatsApp and email.
-- Never claim Emmanuel is available at a specific time unless known.
-- Never pretend to be Emmanuel himself.
-- You are his AI receptionist/assistant.
-- Keep responses reasonably concise.
-- Be helpful before being promotional.
-`;
+import { AI_SYSTEM_PROMPT } from "./config";
+import type { Env, ChatMessage, ChatRequest } from "./types";
 
 const MODEL = "@cf/meta/llama-3.1-8b-instruct";
 
+const WEBSITE_ORIGIN = "https://jp-ai-receptionist-vi39.vercel.app";
+
 function corsHeaders(origin: string | null): HeadersInit {
   const allowedOrigin =
-    origin === "https://jp-ai-receptionist-vi39.vercel.app"
-      ? origin
-      : "https://jp-ai-receptionist-vi39.vercel.app";
+    origin === WEBSITE_ORIGIN ? origin : WEBSITE_ORIGIN;
 
   return {
     "Access-Control-Allow-Origin": allowedOrigin,
@@ -96,7 +17,7 @@ function corsHeaders(origin: string | null): HeadersInit {
   };
 }
 
-function response(
+function json(
   data: unknown,
   status = 200,
   origin: string | null = null
@@ -107,10 +28,28 @@ function response(
   });
 }
 
-async function chat(
+function cleanHistory(history: unknown): ChatMessage[] {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+
+  return history
+    .filter(
+      (item): item is ChatMessage =>
+        !!item &&
+        typeof item === "object" &&
+        "role" in item &&
+        "content" in item &&
+        (item.role === "user" || item.role === "assistant") &&
+        typeof item.content === "string"
+    )
+    .slice(-10);
+}
+
+async function handleChat(
   request: Request,
   env: Env
-) {
+): Promise<Response> {
   const origin = request.headers.get("Origin");
 
   let body: ChatRequest;
@@ -118,9 +57,9 @@ async function chat(
   try {
     body = await request.json();
   } catch {
-    return response(
+    return json(
       {
-        error: "Invalid request.",
+        error: "Invalid JSON request.",
       },
       400,
       origin
@@ -130,7 +69,7 @@ async function chat(
   const message = body.message?.trim();
 
   if (!message) {
-    return response(
+    return json(
       {
         error: "Message is required.",
       },
@@ -139,22 +78,12 @@ async function chat(
     );
   }
 
-  const history = Array.isArray(body.history)
-    ? body.history
-        .filter(
-          (item) =>
-            item &&
-            (item.role === "user" ||
-              item.role === "assistant") &&
-            typeof item.content === "string"
-        )
-        .slice(-10)
-    : [];
+  const history = cleanHistory(body.history);
 
   const messages = [
     {
       role: "system",
-      content: SYSTEM_PROMPT,
+      content: AI_SYSTEM_PROMPT,
     },
     ...history,
     {
@@ -174,11 +103,13 @@ async function chat(
       response?: string;
     };
 
-    return response(
+    const reply =
+      output.response?.trim() ||
+      "I'm sorry, I couldn't generate a response right now.";
+
+    return json(
       {
-        reply:
-          output.response?.trim() ||
-          "I'm sorry, I couldn't generate a response right now.",
+        reply,
       },
       200,
       origin
@@ -186,7 +117,7 @@ async function chat(
   } catch (error) {
     console.error("Workers AI error:", error);
 
-    return response(
+    return json(
       {
         error: "AI service temporarily unavailable.",
       },
@@ -213,7 +144,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/" && request.method === "GET") {
-      return response(
+      return json(
         {
           name: "JP AI Receptionist",
           status: "online",
@@ -228,7 +159,7 @@ export default {
       url.pathname === "/health" &&
       request.method === "GET"
     ) {
-      return response(
+      return json(
         {
           status: "ok",
           ai: "Cloudflare Workers AI",
@@ -242,10 +173,10 @@ export default {
       url.pathname === "/chat" &&
       request.method === "POST"
     ) {
-      return chat(request, env);
+      return handleChat(request, env);
     }
 
-    return response(
+    return json(
       {
         error: "Route not found.",
       },
