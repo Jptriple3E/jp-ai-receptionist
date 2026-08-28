@@ -1,1 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
 
+  "name": "jp-ai-receptionist",
+
+  "main": "src/index.ts",
+
+  "compatibility_date": "2026-08-28",
+
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+
+  "ai": {
+    "binding": "AI"
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}
